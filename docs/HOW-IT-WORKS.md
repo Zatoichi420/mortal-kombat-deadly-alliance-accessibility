@@ -74,6 +74,35 @@ Jax, Kitana, Raiden, Reptile, Cyrax.
 This one address wants a 60-second confirmation on first real play — see
 [CALIBRATION.md](CALIBRATION.md).
 
+## Game Options and the other full-screen adjusters
+
+Screens like **Game Options** are *not* the same menu system — they don't set
+`menu_on`. `game_state == 18` plus the last menu item you picked identifies the
+screen; the row cursor is `cursor_position` (`0x8041be50`, the symbol the main
+menu does *not* use); labels come from `game_options_tbl` (`0x80254fec`, 5 rows of
+`[label, up_fn, down_fn, disp_fn]`); and the current value of each row is a
+`tmp_*` variable (`0x8041be5c`–`0x8041be6c`, all inside the one block the daemon
+already reads). So it speaks e.g. "Game Options. CPU Difficulty: Medium". Sound
+Options / Controller Setup / Screen Adjust are the same shape but not wired yet.
+
+## Match start
+
+`game_state == 5` = a round is being fought. `p1_char` / `p2_char`
+(`0x8041a8c0` / `0x8041a8c4`) then hold the **internal** character id — the first
+word of each `char_data_tbl` entry, *not* the roster slot — so the daemon builds a
+one-time `id → slot` reverse map from `char_data_tbl` and announces the matchup
+once per round, left fighter first: "Shang Tsung versus Johnny Cage".
+
+## Latency
+
+RetroArch answers ~one network command per emulated frame (~16.5 ms). A poll
+therefore reads in **3 bulk blocks** (the `.sdata` variable cluster + `menu_stack`
++ `main_menu_tbl`), not ~15 point reads; item counts and label strings are cached
+(they never change); and there's no settle delay on a cursor move — `say`
+interrupts the previous word and the ~50 ms poll is the debounce. Keypress →
+speech is ~75 ms (it was ~1.5 s before this work). Details:
+[AUDIT-menu-latency.md](AUDIT-menu-latency.md).
+
 ## Files
 
 | file | role |

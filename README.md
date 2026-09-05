@@ -136,12 +136,21 @@ Logs: `~/Library/Logs/mkda-menu-reader.log` (macOS) ·
 
 ## Status
 
-- **Working & verified live:** main menu, Options, Kontent, and pause-menu
-  narration with list position ("N of M").
-- **Needs a 60-second confirm on first play:** the character-select fighter
-  names — see [docs/CALIBRATION.md](docs/CALIBRATION.md).
-- **Not yet covered** (falls through to RetroArch's own OCR key): in-match text,
-  the Krypt, the profile name-entry keyboard, Practice sub-screens.
+- **Working & verified live:** main-menu / Options / Kontent / pause-menu
+  narration with list position ("Arcade, 1 of 8"); ~75 ms keypress → speech.
+- **Working, please confirm on first play:**
+  - **Game Options** — reads each row and its current value
+    ("Game Options. CPU Difficulty: Medium"). Sound / Controller Setup / Screen
+    Adjust are not wired yet.
+  - **Character select** — speaks the hovered fighter (`P1_POS` / `P2_POS`);
+    the address wants a 60-second check, see [docs/CALIBRATION.md](docs/CALIBRATION.md).
+  - **Match start** — announces the matchup once, left fighter first
+    ("Shang Tsung versus Johnny Cage").
+- **Not covered** (use RetroArch's OCR key): in-match HUD/text, the Krypt, the
+  profile name-entry keyboard, Practice sub-screens.
+- Latency + all bug fixes: [docs/AUDIT-menu-latency.md](docs/AUDIT-menu-latency.md),
+  [docs/BUG-menu-selection.md](docs/BUG-menu-selection.md),
+  [docs/BUG-confirm-button.md](docs/BUG-confirm-button.md).
 
 ### Confirm button
 
