@@ -1,0 +1,23 @@
+# never commit game data — this repo contains no copyrighted content
+*.iso
+*.nkit.iso
+*.gcm
+*.rvz
+*.wbfs
+*.dol
+*.elf
+*.ssf
+*.h4m
+*.dsp
+*.gsb
+disc/
+mkda-work/
+
+# build / editor cruft
+__pycache__/
+*.pyc
+.DS_Store
+*.app/
+last_ocr.txt
+last_frame.png
+*.log

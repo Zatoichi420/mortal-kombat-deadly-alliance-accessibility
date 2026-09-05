@@ -1,0 +1,17 @@
+[Unit]
+Description=MK: Deadly Alliance talking-menu daemon
+After=graphical-session.target
+
+[Service]
+Type=simple
+# __INSTALL_DIR__ is filled in by install/linux/install.sh
+ExecStart=/usr/bin/env python3 __INSTALL_DIR__/menu_reader.py
+Restart=always
+RestartSec=10
+# speech backend / voice — uncomment to override
+# Environment=MKDA_SPEAK_BACKEND=spd-say
+# Environment=MKDA_VOICE=en-us
+# Environment=MKDA_RATE_WPM=260
+
+[Install]
+WantedBy=default.target
