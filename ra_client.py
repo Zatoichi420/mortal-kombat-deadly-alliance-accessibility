@@ -57,15 +57,32 @@ class RAClient:
 
     # ---- network command interface -------------------------------------------
 
-    def _cmd(self, text: str, expect_reply: bool) -> str | None:
-        self._cmd_sock.sendto(text.encode("ascii"), self.cmd_addr)
-        if not expect_reply:
-            return None
-        try:
-            data, _ = self._cmd_sock.recvfrom(65535)
-        except socket.timeout:
-            raise RetroArchError(f"no reply to {text!r} (is RetroArch focused / not App-Napped?)")
-        return data.decode("ascii", errors="replace").strip()
+    def _cmd(self, text: str, expect_reply: bool, retries: int = 2) -> str | None:
+        """Send a command; if a reply is expected, read datagrams until one whose
+        leading token matches the command we sent (RetroArch echoes the command
+        name in READ_CORE_MEMORY / WRITE_CORE_MEMORY / GET_STATUS / VERSION
+        replies). This demuxes replies on the shared UDP socket so a slow
+        GET_STATUS answer can't be mistaken for a READ_CORE_MEMORY answer."""
+        want = text.split(" ", 1)[0]
+        last_err = None
+        for _ in range(retries + 1):
+            self._cmd_sock.sendto(text.encode("ascii"), self.cmd_addr)
+            if not expect_reply:
+                return None
+            deadline = time.monotonic() + self.timeout
+            while time.monotonic() < deadline:
+                try:
+                    self._cmd_sock.settimeout(max(0.05, deadline - time.monotonic()))
+                    data, _ = self._cmd_sock.recvfrom(65535)
+                except socket.timeout:
+                    break
+                reply = data.decode("ascii", errors="replace").strip()
+                if reply.split(" ", 1)[0] == want or want == "VERSION":
+                    return reply
+                # stale reply to an earlier command — drop it and keep reading
+                last_err = f"stale reply {reply.split(' ',1)[0]!r}"
+        raise RetroArchError(
+            f"no reply to {text!r} ({last_err or 'timeout'}; is RetroArch running and focused?)")
 
     def version(self) -> str:
         return self._cmd("VERSION", True)
