@@ -25,8 +25,27 @@ MAIN_MENU_TBL      = 0x80254f60   # array of 0x1c-byte menu records
 MENU_REC_STRIDE    = 0x1c
 MENU_CURSOR_OFF    = 0x10         # cursor index lives at rec+0x10
 MENU_ITEM_STRIDE   = 0x0c         # [label ptr, disp fn, ctrl fn]
-CURSOR_POSITION    = 0x8041be50   # (unused: NOT the menu cursor despite the name)
+CURSOR_POSITION    = 0x8041be50   # u32 - row cursor on the full-screen OPTION screens
+                                 # (Game/Sound/Controller/Screen); NOT the mode-select cursor
 ACTIVE_MSEL_MENU   = 0x8041c774   # u32, which mode-select sub-screen
+
+# ---- full-screen option sub-screens (Options -> Game Options etc.) --------
+# These do NOT set menu_on; game_state == 18 and the daemon tracks the last menu
+# item you picked to know which of the four you're on.
+GAME_STATE_OPTIONS = 18
+GAME_OPTIONS_TBL   = 0x80254fec   # 5 rows x [char* label, up_fn, down_fn, disp_fn]
+GAME_OPTIONS_TMP   = [            # per-row current value (also .sdata, in the VARS block)
+    ("CPU Difficulty", 0x8041be6c, ("Very Easy", "Easy", "Medium", "Hard", "Very Hard", "Expert")),
+    ("Rounds to Win",  0x8041be68, None),
+    ("Round Time",     0x8041be64, None),
+    ("Mini Game Every", 0x8041be60, None),
+    ("Blood Level",    0x8041be5c, ("Off", "Low", "Medium", "Max")),
+]
+
+# ---- in-match ------------------------------------------------------------
+GAME_STATE_MATCH = 5             # game_state while a round is being fought
+# In a MATCH, P1_CHAR / P2_CHAR are the INTERNAL character id (char_data_tbl
+# entry field 0), not the roster slot. Reverse-map via char_data_tbl.
 MODE_MENU_LAST_PAGE= 0x8041c784
 F_MODE_SELECTED    = 0x8041c78c
 F_OPTION_SELECTED  = 0x8041c788

@@ -28,7 +28,7 @@ import mkda_addrs as A
 from speak import Speaker
 
 POLL_HZ = 20
-SETTLE_S = 0.06           # wait for the cursor to stop before announcing
+SETTLE_S = 0.04           # floor between utterances so a held D-pad doesn't machine-gun
 TARGET_RECHECK_S = 2.0    # how often to re-verify MK:DA is still the running game
 
 # RetroArch's network command interface processes ~1 command per emulated frame
@@ -65,8 +65,8 @@ class Context:
     IDLE = "idle"
     MENU = "menu"
     CHARSELECT = "charselect"
-    PRACTICE_SELECT = "practice-select"
-    NAME_ENTRY = "name-entry"
+    OPTIONS = "options"          # a full-screen option adjuster (Game Options etc.)
+    MATCH = "match"              # a round is being fought
 
 
 class MenuReader:
@@ -76,16 +76,55 @@ class MenuReader:
         self.say = speaker or Speaker()
         self.announce_descriptions = announce_descriptions
         self._last_spoken_key = None
-        self._pending_key = None
-        self._pending_since = 0.0
+        self._last_say_at = -1e9
         self._last_context = None
         self._ctx_candidate = None
         self._ctx_streak = 0
         self._roster_cache: dict[int, str] = {}
         self._menu_count_cache: dict[int, int] = {}     # menu_def -> item count (static)
         self._label_cache: dict[tuple, str] = {}        # (menu_def, cursor) -> label (static)
+        self._id_to_slot: dict[int, int] | None = None  # internal char id -> roster slot
+        self._go_labels: list[str] | None = None        # game_options_tbl labels
+        self._last_pick: tuple | None = None            # (menu_def, cursor) last confirmed
+        self._match_announced = False
         self._target_ok = False
         self._target_checked = 0.0
+
+    def _char_id_to_name(self, cid: int) -> str:
+        """In a match, p1_char/p2_char are the internal id (char_data_tbl entry
+        field 0), not the roster slot. Build the reverse map once."""
+        if self._id_to_slot is None:
+            self._id_to_slot = {}
+            try:
+                tbl = self.ra.read_memory(A.CHAR_DATA_TBL, 24 * A.CHAR_DATA_STRIDE)
+                for slot in range(24):
+                    off = slot * A.CHAR_DATA_STRIDE
+                    if off + 4 > len(tbl):
+                        break
+                    cid_ = int.from_bytes(tbl[off:off + 4], "big")
+                    if cid_ < 64:
+                        self._id_to_slot.setdefault(cid_, slot)
+            except RetroArchError:
+                self._id_to_slot = None
+                return f"character {cid}"
+        slot = self._id_to_slot.get(cid)
+        return self._roster_name(slot) if slot is not None else f"character {cid}"
+
+    def _game_option_labels(self) -> list[str]:
+        if self._go_labels is None:
+            self._go_labels = [row[0] for row in A.GAME_OPTIONS_TMP]  # fallback
+            try:
+                blob = self.ra.read_memory(A.GAME_OPTIONS_TBL, 5 * 16)
+                got = []
+                for i in range(5):
+                    lp = int.from_bytes(blob[i * 16:i * 16 + 4], "big")
+                    s = read_cstring(self.ra, lp, 24)
+                    got.append(prettify(s) if s else A.GAME_OPTIONS_TMP[i][0])
+                if got:
+                    self._go_labels = got
+            except RetroArchError:
+                pass
+        return self._go_labels
 
     # ---- reading helpers --------------------------------------------------
 
@@ -139,25 +178,29 @@ class MenuReader:
         return {"menu_id": menu_id, "menu_def": menu_def, "cursor": cursor,
                 "n": self._menu_item_count(menu_def)}
 
-    def _roster_name(self, cid: int) -> str:
-        if cid in self._roster_cache:
-            return self._roster_cache[cid]
-        name = ""
-        if A.ROSTER_FROM_MEMORY and 0 <= cid < 40:
+    def _roster_name(self, slot: int) -> str:
+        """slot = roster / char_data_tbl index. The fallback list is the verified
+        on-screen order (StrategyWiki + a live walk); the in-RAM bio name is only
+        the first line ('SHANG', not 'SHANG TSUNG'), so the list wins."""
+        if slot is None:
+            return "character"
+        if slot in self._roster_cache:
+            return self._roster_cache[slot]
+        if slot in A.ROSTER_EXTRA:
+            name = A.ROSTER_EXTRA[slot]
+        elif 0 <= slot < len(A.ROSTER_FALLBACK):
+            name = A.ROSTER_FALLBACK[slot]
+        elif A.ROSTER_FROM_MEMORY and 0 <= slot < 40:
             try:
-                bio = self.ra.read_u32(A.CHAR_DATA_TBL + cid * A.CHAR_DATA_STRIDE + A.CHAR_DATA_BIO_OFF)
-                namep = self.ra.read_u32(bio)
-                name = read_cstring(self.ra, namep, 24).title()
+                bio = self.ra.read_u32(A.CHAR_DATA_TBL + slot * A.CHAR_DATA_STRIDE + A.CHAR_DATA_BIO_OFF)
+                a, b = read_cstring(self.ra, self.ra.read_u32(bio), 16), \
+                    read_cstring(self.ra, self.ra.read_u32(bio + 4), 16)
+                name = " ".join(x.title() for x in (a, b) if x and x.strip()) or f"slot {slot}"
             except RetroArchError:
-                name = ""
-        if not name:
-            if cid in A.ROSTER_EXTRA:
-                name = A.ROSTER_EXTRA[cid]
-            elif 0 <= cid < len(A.ROSTER_FALLBACK):
-                name = A.ROSTER_FALLBACK[cid]
-            else:
-                name = f"character {cid}"
-        self._roster_cache[cid] = name
+                name = f"slot {slot}"
+        else:
+            name = f"slot {slot}"
+        self._roster_cache[slot] = name
         return name
 
     # ---- snapshot -------------------------------------------------------
@@ -185,16 +228,27 @@ class MenuReader:
             "p1_pos": u(A.P1_POS),
             "p2_pos": u(A.P2_POS),
             "practice_p1": u(A.PRACTICE_P1_INDEX),
-            "p1_char": None,     # read lazily in _charselect_utterance (locked pick only)
+            "opt_cursor": u(A.CURSOR_POSITION),
+            "opt_vals": [u(row[1]) for row in A.GAME_OPTIONS_TMP],
+            "p1_char": None,     # read lazily — only in a match / on a locked pick
             "p2_char": None,
         }
         s["menu"] = self._active_menu(s["menu_on"], s["menu_stack_ptr"])
+        if s["menu"]:
+            self._last_pick = (s["menu"]["menu_def"], s["menu"]["cursor"])
+        if full or s["game_state"] == A.GAME_STATE_MATCH:
+            s["p1_char"], s["p2_char"] = self._read_picks()
         if full:
             s["active_msel_menu"] = ra.read_u32(A.ACTIVE_MSEL_MENU)
             s["pne_cursor"] = ra.read_u32(A.PNE_CURSOR)
-            s["p1_char"] = ra.read_u32(A.P1_CHAR)
-            s["p2_char"] = ra.read_u32(A.P2_CHAR)
         return s
+
+    def _read_picks(self) -> tuple:
+        try:
+            cc = self.ra.read_memory(A.P1_CHAR, 8)
+            return int.from_bytes(cc[0:4], "big"), int.from_bytes(cc[4:8], "big")
+        except RetroArchError:
+            return None, None
 
     # ---- classify + narrate -------------------------------------------
 
@@ -204,11 +258,47 @@ class MenuReader:
     _NON_MENU_STATES = (1, 20)
 
     def _classify(self, s: dict) -> str:
+        gs = s["game_state"]
+        if gs == A.GAME_STATE_MATCH and (s["p1_char"] or 0) < 64 and (s["p2_char"] or 0) < 64 \
+                and not (s["menu_on"] and s["menu"]):        # a real round, not the pause menu
+            return Context.MATCH
         if s["f_psel_init"] or s["p1_state"] or s["p2_state"]:
             return Context.CHARSELECT
-        if s["menu"] is not None and s["game_state"] not in self._NON_MENU_STATES:
+        if s["menu"] is not None and gs not in self._NON_MENU_STATES:
             return Context.MENU
-        return Context.IDLE
+        if gs == A.GAME_STATE_OPTIONS and self._last_pick == (0x802301ac, 0):
+            return Context.OPTIONS       # entered "Game Options" from the Options submenu
+        return Context.IDLE              # Sound/Controller/Screen sub-screens not wired yet
+
+    def _options_utterance(self, s: dict):
+        """The full-screen Game Options adjuster (menu_on is 0 here). Row cursor
+        is cursor_position; values are the tmp_* vars in the snapshot."""
+        cur = s["opt_cursor"]
+        rows = self._game_option_labels()
+        if not (0 <= cur < len(rows)):
+            return None
+        label = rows[cur]
+        val = s["opt_vals"][cur] if cur < len(s["opt_vals"]) else None
+        names = A.GAME_OPTIONS_TMP[cur][2] if cur < len(A.GAME_OPTIONS_TMP) else None
+        if names and val is not None and 0 <= val < len(names):
+            spoken_val = names[val]
+        elif val is not None:
+            spoken_val = str(val)
+        else:
+            spoken_val = ""
+        text = f"{label}: {spoken_val}" if spoken_val else label
+        return ("opt", cur, val, label), text, "Game Options"
+
+    def _match_utterance(self, s: dict):
+        """Announce the matchup once when a round starts: left fighter versus right."""
+        if self._match_announced:
+            return None
+        p1, p2 = s["p1_char"], s["p2_char"]
+        if p1 is None or p2 is None or p1 >= 64 or p2 >= 64:
+            return None
+        self._match_announced = True
+        return ("match", p1, p2), \
+            f"{self._char_id_to_name(p1)} versus {self._char_id_to_name(p2)}", "Match"
 
     def _menu_utterance(self, s: dict):
         m = s["menu"]
@@ -244,7 +334,7 @@ class MenuReader:
                     pass
             locked = st >= 4 and chosen != A.CHAR_NONE
             if locked:
-                parts.append(f"Player {pnum} chose {self._roster_name(chosen)}")
+                parts.append(f"Player {pnum} chose {self._char_id_to_name(chosen)}")
                 key_bits.append((pnum, "locked", chosen))
             else:
                 parts.append(f"Player {pnum}: {self._roster_name(pos)}")
@@ -270,36 +360,45 @@ class MenuReader:
         else:
             return
 
+        if ctx != Context.MATCH:
+            self._match_announced = False
+
+        ctx_name = None
         if ctx != self._last_context:
             self._last_context = ctx
-            if ctx == Context.CHARSELECT:
-                self.say.say("Character select")
-            elif ctx == Context.MENU and s["menu"] and s["menu"]["menu_def"] in A.MENU_STRUCTS:
-                self.say.say(A.MENU_STRUCTS[s["menu"]["menu_def"]][0])
             self._last_spoken_key = None
-            self._pending_key = None
+            if ctx == Context.CHARSELECT:
+                ctx_name = "Character select"
+            elif ctx == Context.OPTIONS:
+                ctx_name = "Game Options"
+            elif ctx == Context.MENU and s["menu"] and s["menu"]["menu_def"] in A.MENU_STRUCTS:
+                ctx_name = A.MENU_STRUCTS[s["menu"]["menu_def"]][0]
 
-        if ctx == Context.MENU:
-            u = self._menu_utterance(s)
-        elif ctx == Context.CHARSELECT:
-            u = self._charselect_utterance(s)
-        else:
-            u = None
+        u = {Context.MENU: self._menu_utterance,
+             Context.CHARSELECT: self._charselect_utterance,
+             Context.OPTIONS: self._options_utterance,
+             Context.MATCH: self._match_utterance}.get(ctx, lambda _s: None)(s)
 
         if u is None:
+            if ctx_name:                                  # e.g. entered a menu mid-load
+                self.say.say(ctx_name)
+                self._last_say_at = now
             return
         key, text, _menu_name = u
         if key == self._last_spoken_key:
             return
-        # settle: only speak once the selection has held briefly
-        if key != self._pending_key:
-            self._pending_key = key
-            self._pending_since = now
+        # a screen name just spoken -> prefix it so it's one utterance, not two
+        # that interrupt each other ("Main menu. Arcade, 1 of 8").
+        if ctx_name:
+            text = f"{ctx_name}. {text}"
+        # Speak as soon as the selection changes. `say` interrupts the previous
+        # utterance and the ~50 ms poll is itself the debounce; SETTLE_S is only a
+        # floor so a held D-pad's auto-repeat can't spawn a process every poll.
+        elif now - self._last_say_at < SETTLE_S:
             return
-        if now - self._pending_since >= SETTLE_S:
-            self.say.say(text)
-            self._last_spoken_key = key
-            self._pending_key = None
+        self.say.say(text)
+        self._last_spoken_key = key
+        self._last_say_at = now
 
     # ---- loop --------------------------------------------------------
 
@@ -374,7 +473,8 @@ def _fmt(s: dict) -> str:
             f"active_msel={s.get('active_msel_menu')} | "
             f"psel_init={s['f_psel_init']} p1s={s['p1_state']} p2s={s['p2_state']} "
             f"p1c={s.get('p1_char')} p2c={s.get('p2_char')} p1pos={s['p1_pos']} p2pos={s['p2_pos']} "
-            f"| gs={s['game_state']} mop={s['mode_of_play']} prac_p1={s['practice_p1']} pne={s.get('pne_cursor')}")
+            f"| gs={s['game_state']} mop={s['mode_of_play']} opt_cur={s['opt_cursor']} "
+            f"opt_vals={s['opt_vals']} pne={s.get('pne_cursor')}")
 
 
 def main():

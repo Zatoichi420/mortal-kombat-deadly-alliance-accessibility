@@ -289,3 +289,22 @@ scope for this audit but worth a line in the README.
 * `--md` prints the table in Markdown; a JSON dump follows for tooling.
 * Idempotent and safe to re-run. It does **not** touch `retroarch.cfg` — enable
   and disable `network_remote` yourself around the run.
+
+---
+
+## Follow-up (2026-09-05, round 2)
+
+- **Latency, round 2**: dropped the per-move settle poll (speak on the first poll
+  the selection changes; `say` interruption + the ~50 ms poll is the debounce;
+  `SETTLE_S` is now just a 40 ms floor against a held D-pad). Measured live:
+  keypress -> speech **72 / 77 / 89 ms** (was 121/169/181 after round 1).
+- **Game Options** now narrated: the full-screen option adjusters don't set
+  `menu_on`; `game_state == 18` + the last menu item picked identifies the screen,
+  `cursor_position` (0x8041be50) is the row, `game_options_tbl` gives the labels,
+  and `tmp_*` vars (in the VARS block) give the current value. Wired for Game
+  Options (item 0); Sound / Controller / Screen stay silent for now.
+- **Match announcement**: on `game_state == 5` with valid picks, once per round:
+  "{P1 name} versus {P2 name}". In a match P1_CHAR/P2_CHAR are the *internal*
+  char id (char_data_tbl entry field 0), reverse-mapped to the roster slot.
+- `prettify()` keeps CPU/MK/TV/AI capitalised; roster names come from the verified
+  list (the in-RAM bio name is only the first line, "SHANG" not "SHANG TSUNG").
