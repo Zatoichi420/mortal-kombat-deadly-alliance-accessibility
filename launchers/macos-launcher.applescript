@@ -31,4 +31,6 @@ delay 1
 do shell script "open -a RetroArch --args -L " & quoted form of corePath & " " & quoted form of romPath
 delay 4
 do shell script "open -a RetroArch"
+-- keep the machine (and RetroArch's command port) awake while you play
+do shell script "( sleep 3; P=$(pgrep -x RetroArch); [ -n \"$P\" ] && caffeinate -disu -w $P ) >/dev/null 2>&1 &"
 do shell script "say 'Mortal Kombat loading. Press Start to reach the main menu.'"
