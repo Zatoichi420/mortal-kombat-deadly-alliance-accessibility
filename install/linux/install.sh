@@ -46,6 +46,19 @@ cp "$SRC_DIR"/menu_reader.py "$SRC_DIR"/ra_client.py "$SRC_DIR"/mkda_addrs.py "$
 sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "$SRC_DIR/install/linux/$NAME.service" > "$UNIT_DIR/$NAME.service"
 
 systemctl --user daemon-reload
+
+# optional: A/B remap so the bottom face button confirms in menus
+REMAP_DST="${XDG_CONFIG_HOME:-$HOME/.config}/retroarch/config/remaps/dolphin-emu/dolphin-emu.rmp"
+if [ ! -f "$REMAP_DST" ]; then
+    printf "Install a remap so the BOTTOM face button confirms in GameCube menus\n(default is the right button; also swaps two attack buttons in a match) [y/N] "
+    read -r ans
+    if [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then
+        mkdir -p "$(dirname "$REMAP_DST")"
+        cp "$SRC_DIR/extras/dolphin-emu.rmp" "$REMAP_DST"
+        echo "  installed $REMAP_DST (delete to undo)"
+    fi
+fi
+
 systemctl --user enable --now "$NAME.service"
 sleep 1
 systemctl --user --no-pager status "$NAME.service" | head -6 || true

@@ -59,6 +59,21 @@ launchctl bootstrap "gui/$UID_NUM" "$PLIST_DST"
 sleep 1
 launchctl print "gui/$UID_NUM/$LABEL" | grep -E 'state = |pid = ' || true
 
+# 6. optional: the A/B remap so the bottom face button confirms in menus
+REMAP_DST="$HOME/Library/Application Support/RetroArch/config/remaps/dolphin-emu/dolphin-emu.rmp"
+if [ ! -f "$REMAP_DST" ]; then
+    echo
+    echo "By default RetroArch maps 'confirm' to the RIGHT face button (Xbox B / PS Circle)"
+    echo "in GameCube games; the bottom button is 'back'. Install a remap so the BOTTOM"
+    echo "button confirms instead? (also swaps those two attack buttons in a match) [y/N] "
+    read -r ans
+    if [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then
+        mkdir -p "$(dirname "$REMAP_DST")"
+        cp "$SRC_DIR/extras/dolphin-emu.rmp" "$REMAP_DST"
+        echo "  installed $REMAP_DST  (delete it to undo)"
+    fi
+fi
+
 echo
 echo "Installed. Start MK: Deadly Alliance in RetroArch and you should hear the menus."
 echo "  log:  tail -f \"$LOG\""

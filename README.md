@@ -143,16 +143,23 @@ Logs: `~/Library/Logs/mkda-menu-reader.log` (macOS) ·
 - **Not yet covered** (falls through to RetroArch's own OCR key): in-match text,
   the Krypt, the profile name-entry keyboard, Practice sub-screens.
 
-### Known issue — fixed
+### Confirm button
 
-Selecting a menu item did nothing / replayed the intro. Cause: RetroArch's
-network gamepad (`network_remote`) was left enabled from the address-finding work,
-and a stuck injected Player-1 button was overriding the real controller. The
-daemon **never** needs `network_remote` — the installers now turn it off and
-assert it stays off. If you enabled it by hand for calibration, set
-`network_remote_enable = "false"` (RetroArch closed) and restart RetroArch. The
-daemon also now ignores the title/attract screens (`game_state`) and waits for a
-stable screen before its first announcement. See
+RetroArch's Dolphin core maps the GameCube **A** button (what MK:DA menus use to
+*confirm*) to **RetroPad A** — the **right** face button on an Xbox/PlayStation pad
+(B / Circle), **not** the bottom one. So pressing the natural confirm button
+(Xbox A / PS Cross) sends GameCube **B** = *Back*, which on the main menu drops you
+to the attract loop and replays the intro. **Press the right face button
+(B / Circle), or Start, to confirm** — or install the optional remap in
+[`extras/`](extras/) (the `install` scripts offer to) so the **bottom** button
+confirms like you'd expect. Full write-up:
+[docs/BUG-confirm-button.md](docs/BUG-confirm-button.md).
+
+### Also fixed
+
+The daemon now ignores the title/attract screens (`game_state`) and waits for a
+stable screen before its first announcement, and the installers disable RetroArch's
+network gamepad (`network_remote`, UDP 55400) which the daemon never needs. See
 [docs/BUG-menu-selection.md](docs/BUG-menu-selection.md).
 
 ## Retargeting / other regions

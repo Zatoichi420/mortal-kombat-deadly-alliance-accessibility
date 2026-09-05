@@ -61,6 +61,18 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
             -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit 0
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings `
     -Description "MK: Deadly Alliance talking-menu daemon" -Force | Out-Null
+
+# optional: A/B remap so the bottom face button confirms in menus
+$RemapDst = Join-Path $env:APPDATA "RetroArch\config\remaps\dolphin-emu\dolphin-emu.rmp"
+if (-not (Test-Path $RemapDst)) {
+    $a = Read-Host "Install a remap so the BOTTOM face button confirms in GameCube menus (default is the right button; also swaps two attack buttons in a match)? [y/N]"
+    if ($a -eq "y" -or $a -eq "Y") {
+        New-Item -ItemType Directory -Force -Path (Split-Path $RemapDst) | Out-Null
+        Copy-Item (Join-Path $RepoRoot "extras\dolphin-emu.rmp") $RemapDst -Force
+        Write-Host "  installed $RemapDst (delete to undo)"
+    }
+}
+
 Start-ScheduledTask -TaskName $TaskName
 
 Write-Host ""
