@@ -294,3 +294,32 @@ From `retroarch.cfg`:
 6. **Regression after the #1 fix.** Walk the real main menu Up/Down — every item
    still announced with "N of M"; enter Arcade → character-select narration
    still works; pause menu still works.
+
+---
+
+## Resolution (2026-09-05)
+
+Both fixes applied and pushed.
+
+**Cause 2 (the actual bug) — network_remote latch.** Reproduced live: with
+`network_remote_enable_user_p1 = "true"`, holding a `b` (back) button via UDP
+55400 immediately closed the menu (`menu_on` → 0) and dropped the game to the
+"PRESS START" title screen; the next button then replayed the intro — exactly the
+report. Fix:
+- `retroarch.cfg`: `network_remote_enable` and `network_remote_enable_user_p1`
+  set to `"false"` (with RetroArch closed). Port 55400 no longer opens.
+- All three installers now also turn `network_remote` off and re-check it on
+  every run (same as they assert `network_cmd_enable` on).
+- `tools/README.md` / `CONTRIBUTING.md`: the calibration scripts must flip it back
+  off after a run.
+
+**Cause 1 — phantom attract narration (hardening).**
+- `menu_reader._classify()`: `_NON_MENU_STATES = (1, 20)` — MENU is not reported
+  when `game_state` is a title/attract value. Verified live: real main menu +
+  Options submenu are `game_state == 11`; title / attract-idle are `1`; a real
+  in-match pause menu is `5` (still narrated).
+- `menu_reader.narrate()`: a new non-idle context must hold for **2 consecutive
+  polls** before the first announcement, so one transient frame can't trigger
+  speech. Unit-tested (`_classify` returns IDLE for gs=1 with a stale menu;
+  speaks for gs=11 held; silent for a 1-frame blip).
+- `deception_reader` got the same 2-poll context debounce.
