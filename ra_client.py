@@ -46,7 +46,7 @@ class RetroArchError(RuntimeError):
 class RAClient:
     def __init__(self, cmd_host=CMD_HOST, cmd_port=CMD_PORT,
                  remote_host=REMOTE_HOST, remote_base_port=REMOTE_BASE_PORT,
-                 timeout=1.5):
+                 timeout=0.5):
         self.cmd_addr = (cmd_host, cmd_port)
         self.remote_host = remote_host
         self.remote_base_port = remote_base_port
@@ -57,7 +57,7 @@ class RAClient:
 
     # ---- network command interface -------------------------------------------
 
-    def _cmd(self, text: str, expect_reply: bool, retries: int = 2) -> str | None:
+    def _cmd(self, text: str, expect_reply: bool, retries: int = 1) -> str | None:
         """Send a command; if a reply is expected, read datagrams until one whose
         leading token matches the command we sent (RetroArch echoes the command
         name in READ_CORE_MEMORY / WRITE_CORE_MEMORY / GET_STATUS / VERSION
@@ -112,8 +112,9 @@ class RAClient:
             return False
 
     def read_memory(self, addr: int, length: int) -> bytes:
-        """READ_CORE_MEMORY. addr = raw GameCube address e.g. 0x80418000."""
-        reply = self._cmd(f"READ_CORE_MEMORY {addr:x} {length:x}", True)
+        """READ_CORE_MEMORY. addr = raw GameCube address; RetroArch parses the
+        address as hex and the byte count as DECIMAL (`sscanf "%x %u"`)."""
+        reply = self._cmd(f"READ_CORE_MEMORY {addr:x} {length:d}", True)
         toks = reply.split()
         # "READ_CORE_MEMORY <addr> <b0> <b1> ..."  or  "... <addr> -1 <error>"
         if len(toks) >= 3 and toks[2] == "-1":

@@ -23,3 +23,11 @@ network_remote_enable_user_p1 = "true"
 ```
 It sends RetroArch's 20-byte network-gamepad packet on UDP 55400 — see
 `ra_client.py`. This is only for calibration; the daemon never injects input.
+
+## Note: the A/B-swap remap
+
+If `extras/dolphin-emu.rmp` (or a copy in RetroArch's `config/remaps/dolphin-emu/`)
+is installed, it swaps RetroPad A(8) <-> B(0) **for injected network-remote input
+too**. So `nav.py` / `calibrate.py` / `verify.py`, which call `ra.press("a")` to
+confirm, will send *Back* instead. `audit_menus.py` auto-detects and compensates;
+for the others, temporarily move the remap folder aside during a calibration run.

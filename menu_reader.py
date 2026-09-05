@@ -27,8 +27,28 @@ from ra_client import RAClient, RetroArchError
 import mkda_addrs as A
 from speak import Speaker
 
-POLL_HZ = 12
-SETTLE_S = 0.10           # wait for the cursor to stop before announcing
+POLL_HZ = 20
+SETTLE_S = 0.06           # wait for the cursor to stop before announcing
+TARGET_RECHECK_S = 2.0    # how often to re-verify MK:DA is still the running game
+
+# RetroArch's network command interface processes ~1 command per emulated frame
+# (~16.7 ms), and READ_CORE_MEMORY replies are capped near 1 KB — so a poll must
+# read in a few big blocks, not ~15 point reads. This block covers every .sdata
+# /.sbss variable the hot path needs (0x8041bc90 MENU_ON .. 0x8041bf8c P1_POS).
+VARS_BASE = 0x8041BC00
+VARS_LEN = 960
+
+
+_KEEP_CAPS = {"MK", "CPU", "TV", "AI"}
+
+
+def prettify(label: str) -> str:
+    """MK:DA menu labels are ALL-CAPS; title-case them for TTS but keep real
+    acronyms ('MK HISTORY' -> 'MK History', not 'Mk History' which reads 'Mick')."""
+    out = []
+    for w in " ".join(label.split()).split(" "):
+        out.append(w if w.upper() in _KEEP_CAPS else w.capitalize())
+    return " ".join(out)
 
 
 def read_cstring(ra: RAClient, addr: int, maxlen: int = 48) -> str:
@@ -62,38 +82,62 @@ class MenuReader:
         self._ctx_candidate = None
         self._ctx_streak = 0
         self._roster_cache: dict[int, str] = {}
+        self._menu_count_cache: dict[int, int] = {}     # menu_def -> item count (static)
+        self._label_cache: dict[tuple, str] = {}        # (menu_def, cursor) -> label (static)
+        self._target_ok = False
+        self._target_checked = 0.0
 
     # ---- reading helpers --------------------------------------------------
 
-    def _active_menu(self) -> dict | None:
-        """Resolve the currently-displayed menu via the verified mechanism:
-        menu_id from the nav stack -> record in main_menu_tbl -> menu_def + cursor."""
+    def _menu_item_count(self, menu_def: int) -> int:
+        n = self._menu_count_cache.get(menu_def)
+        if n is None:
+            n = 0
+            try:
+                blob = self.ra.read_memory(menu_def, 24 * A.MENU_ITEM_STRIDE)
+                for i in range(24):
+                    lp = int.from_bytes(blob[i * A.MENU_ITEM_STRIDE:i * A.MENU_ITEM_STRIDE + 4], "big")
+                    if not (0x80200000 <= lp < 0x80300000):
+                        break
+                    n += 1
+            except RetroArchError:
+                return 0
+            self._menu_count_cache[menu_def] = n
+        return n
+
+    def _menu_label(self, menu_def: int, cursor: int) -> str:
+        key = (menu_def, cursor)
+        lbl = self._label_cache.get(key)
+        if lbl is None:
+            try:
+                lp = self.ra.read_u32(menu_def + cursor * A.MENU_ITEM_STRIDE)
+                lbl = read_cstring(self.ra, lp, 32)
+            except RetroArchError:
+                return ""
+            self._label_cache[key] = lbl
+        return lbl
+
+    def _active_menu(self, menu_on: int, sp: int) -> dict | None:
+        """menu_id from the nav stack -> record in main_menu_tbl -> menu_def + cursor.
+        Two range reads; item count + label strings are cached (they never change)."""
+        if not menu_on or sp < 1:
+            return None
         try:
-            if not self.ra.read_u32(A.MENU_ON):
-                return None
-            sp = self.ra.read_u32(A.MENU_STACK_PTR)
-            if sp < 1:
-                return None
-            menu_id = self.ra.read_u32(A.MENU_STACK + (sp - 1) * 4)
-            if menu_id > 8:
-                return None
-            rec = A.MAIN_MENU_TBL + menu_id * A.MENU_REC_STRIDE
-            menu_def = self.ra.read_u32(rec)
-            cursor = self.ra.read_u32(rec + A.MENU_CURSOR_OFF)
+            stack = self.ra.read_memory(A.MENU_STACK, 40)
+            tbl = self.ra.read_memory(A.MAIN_MENU_TBL, 5 * A.MENU_REC_STRIDE)
         except RetroArchError:
             return None
+        i = sp - 1
+        menu_id = int.from_bytes(stack[i * 4:i * 4 + 4], "big")
+        if menu_id > 4:
+            return None
+        rec = menu_id * A.MENU_REC_STRIDE
+        menu_def = int.from_bytes(tbl[rec:rec + 4], "big")
+        cursor = int.from_bytes(tbl[rec + A.MENU_CURSOR_OFF:rec + A.MENU_CURSOR_OFF + 4], "big")
         if not (0x80200000 <= menu_def < 0x80300000):
             return None
-        n = 0
-        while n < 24:
-            try:
-                lp = self.ra.read_u32(menu_def + n * A.MENU_ITEM_STRIDE)
-            except RetroArchError:
-                break
-            if not (0x80200000 <= lp < 0x80300000):
-                break
-            n += 1
-        return {"menu_id": menu_id, "menu_def": menu_def, "cursor": cursor, "n": n}
+        return {"menu_id": menu_id, "menu_def": menu_def, "cursor": cursor,
+                "n": self._menu_item_count(menu_def)}
 
     def _roster_name(self, cid: int) -> str:
         if cid in self._roster_cache:
@@ -118,24 +162,38 @@ class MenuReader:
 
     # ---- snapshot -------------------------------------------------------
 
-    def snapshot(self) -> dict:
+    def snapshot(self, full: bool = False) -> dict:
+        """One 960-byte block read for all the hot .sdata vars, then up to two
+        more reads to resolve the active menu. ~3 UDP round-trips (~50 ms) vs the
+        ~15 (~250 ms) of a naive point-read snapshot. `full=True` adds the extra
+        point reads used only by --probe."""
         ra = self.ra
-        s = {}
-        s["menu_on"] = ra.read_u32(A.MENU_ON)
-        s["menu_stack_ptr"] = ra.read_u32(A.MENU_STACK_PTR)
-        s["active_msel_menu"] = ra.read_u32(A.ACTIVE_MSEL_MENU)
-        s["game_state"] = ra.read_u32(A.GAME_STATE)
-        s["mode_of_play"] = ra.read_u32(A.MODE_OF_PLAY)
-        s["f_psel_init"] = ra.read_u32(A.F_PSEL_INIT)
-        s["p1_state"] = ra.read_u32(A.P1_STATE)
-        s["p2_state"] = ra.read_u32(A.P2_STATE)
-        s["p1_char"] = ra.read_u32(A.P1_CHAR)
-        s["p2_char"] = ra.read_u32(A.P2_CHAR)
-        s["p1_pos"] = ra.read_u32(A.P1_POS)
-        s["p2_pos"] = ra.read_u32(A.P2_POS)
-        s["practice_p1"] = ra.read_u32(A.PRACTICE_P1_INDEX)
-        s["pne_cursor"] = ra.read_u32(A.PNE_CURSOR)
-        s["menu"] = self._active_menu()
+        vb = ra.read_memory(VARS_BASE, VARS_LEN)
+
+        def u(addr: int) -> int:
+            o = addr - VARS_BASE
+            return int.from_bytes(vb[o:o + 4], "big")
+
+        s = {
+            "menu_on": u(A.MENU_ON),
+            "menu_stack_ptr": u(A.MENU_STACK_PTR),
+            "game_state": u(A.GAME_STATE),
+            "mode_of_play": u(A.MODE_OF_PLAY),
+            "f_psel_init": u(A.F_PSEL_INIT),
+            "p1_state": u(A.P1_STATE),
+            "p2_state": u(A.P2_STATE),
+            "p1_pos": u(A.P1_POS),
+            "p2_pos": u(A.P2_POS),
+            "practice_p1": u(A.PRACTICE_P1_INDEX),
+            "p1_char": None,     # read lazily in _charselect_utterance (locked pick only)
+            "p2_char": None,
+        }
+        s["menu"] = self._active_menu(s["menu_on"], s["menu_stack_ptr"])
+        if full:
+            s["active_msel_menu"] = ra.read_u32(A.ACTIVE_MSEL_MENU)
+            s["pne_cursor"] = ra.read_u32(A.PNE_CURSOR)
+            s["p1_char"] = ra.read_u32(A.P1_CHAR)
+            s["p2_char"] = ra.read_u32(A.P2_CHAR)
         return s
 
     # ---- classify + narrate -------------------------------------------
@@ -158,15 +216,10 @@ class MenuReader:
             return None
         mdef, cur, n = m["menu_def"], m["cursor"], m["n"]
         name, fallback = A.MENU_STRUCTS.get(mdef, (None, []))
-        label = ""
-        if 0 <= cur < max(n, 1):
-            try:
-                label = read_cstring(self.ra, self.ra.read_u32(mdef + cur * A.MENU_ITEM_STRIDE), 32)
-            except RetroArchError:
-                pass
+        label = self._menu_label(mdef, cur) if 0 <= cur < max(n, 1) else ""
         if not label and 0 <= cur < len(fallback):
             label = fallback[cur]
-        label = " ".join(label.split()).title() if label else f"item {cur + 1}"
+        label = prettify(label) if label else f"item {cur + 1}"
         key = ("menu", mdef, cur, label)
         text = label
         if n:
@@ -179,11 +232,16 @@ class MenuReader:
         """Announce each active player's hovered fighter; when they lock a pick,
         say 'Player N chose X'."""
         parts, key_bits = [], ["cs"]
-        players = ((1, s["p1_state"], s["p1_pos"], s["p1_char"]),
-                   (2, s["p2_state"], s["p2_pos"], s["p2_char"]))
-        for pnum, st, pos, chosen in players:
+        for pnum, st, pos, char_addr in ((1, s["p1_state"], s["p1_pos"], A.P1_CHAR),
+                                         (2, s["p2_state"], s["p2_pos"], A.P2_CHAR)):
             if not st:
                 continue
+            chosen = A.CHAR_NONE
+            if st >= 4:                       # locked in — one extra read, rare
+                try:
+                    chosen = self.ra.read_u32(char_addr)
+                except RetroArchError:
+                    pass
             locked = st >= 4 and chosen != A.CHAR_NONE
             if locked:
                 parts.append(f"Player {pnum} chose {self._roster_name(chosen)}")
@@ -274,23 +332,32 @@ class MenuReader:
             return True
         return False
 
+    def _target_ready(self) -> bool:
+        """_is_target_game() with a short TTL — it costs 2 UDP reads and the answer
+        rarely changes, so don't pay for it every poll."""
+        now = time.monotonic()
+        if now - self._target_checked >= TARGET_RECHECK_S:
+            self._target_ok = self._is_target_game()
+            self._target_checked = now
+        return self._target_ok
+
     def run(self):
         period = 1.0 / POLL_HZ
         waiting_logged = False
         while True:
             try:
-                if not self._is_target_game():
+                if not self._target_ready():
                     if not waiting_logged:
                         print("waiting for MK: Deadly Alliance to be running...", flush=True)
                         waiting_logged = True
-                    time.sleep(1.5)
+                    time.sleep(1.0)
                     continue
                 waiting_logged = False
-                s = self.snapshot()
-                self.narrate(s)
+                self.narrate(self.snapshot())
             except RetroArchError as e:
                 print(f"(retro) {e}", flush=True)
-                time.sleep(0.7)
+                self._target_checked = 0.0        # force a re-verify next loop
+                time.sleep(0.5)
             except KeyboardInterrupt:
                 return
             time.sleep(period)
@@ -303,10 +370,11 @@ def _fmt(s: dict) -> str:
         menu = f"{nm} id={m['menu_id']} cur={m['cursor']}/{m['n']}"
     else:
         menu = "-"
-    return (f"menu_on={s['menu_on']} sp={s['menu_stack_ptr']} [{menu}] active_msel={s['active_msel_menu']} | "
+    return (f"menu_on={s['menu_on']} sp={s['menu_stack_ptr']} [{menu}] "
+            f"active_msel={s.get('active_msel_menu')} | "
             f"psel_init={s['f_psel_init']} p1s={s['p1_state']} p2s={s['p2_state']} "
-            f"p1c={s['p1_char']} p2c={s['p2_char']} p1pos={s['p1_pos']} p2pos={s['p2_pos']} "
-            f"| gs={s['game_state']} mop={s['mode_of_play']} prac_p1={s['practice_p1']} pne={s['pne_cursor']}")
+            f"p1c={s.get('p1_char')} p2c={s.get('p2_char')} p1pos={s['p1_pos']} p2pos={s['p2_pos']} "
+            f"| gs={s['game_state']} mop={s['mode_of_play']} prac_p1={s['practice_p1']} pne={s.get('pne_cursor')}")
 
 
 def main():
@@ -331,7 +399,7 @@ def main():
         mr = MenuReader(ra)
         while True:
             try:
-                print(_fmt(mr.snapshot()), flush=True)
+                print(_fmt(mr.snapshot(full=True)), flush=True)
             except RetroArchError as e:
                 print(f"(retro) {e}", flush=True)
             if args.once:
