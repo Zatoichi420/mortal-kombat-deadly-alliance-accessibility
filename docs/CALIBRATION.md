@@ -46,7 +46,7 @@ but shifted addresses. The daemon detects these and prints a warning. To retarge
 - `python menu_reader.py --once` — one snapshot; confirms it can reach RetroArch.
 - `python menu_reader.py --probe` — live snapshot ~4×/s; watch fields change as
   you navigate.
-- `MKDA_SPEAK_BACKEND=log python menu_reader.py` — prints every phrase it would
+- `MK_SPEAK_BACKEND=log python menu_reader.py` — prints every phrase it would
   speak instead of speaking, so you can check wording/timing.
 
 ## What was and wasn't verified live (build of 2026-09-05)

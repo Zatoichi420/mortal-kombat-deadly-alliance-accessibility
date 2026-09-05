@@ -29,8 +29,8 @@
 
     <key>EnvironmentVariables</key>
     <dict>
-        <!-- <key>MKDA_VOICE</key><string>Samantha</string> -->
-        <!-- <key>MKDA_RATE_WPM</key><string>260</string> -->
+        <!-- <key>MK_VOICE</key><string>Samantha</string> -->
+        <!-- <key>MK_RATE_WPM</key><string>260</string> -->
     </dict>
 </dict>
 </plist>

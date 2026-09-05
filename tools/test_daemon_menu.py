@@ -3,8 +3,12 @@
 Navigates to mode-select, runs the MenuReader narrate() loop in-process while
 pressing Down, prints every utterance it would speak.
 """
+
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 import os, time
-os.environ["MKDA_SPEAK_BACKEND"] = "log"
+os.environ["MK_SPEAK_BACKEND"] = "log"
 from ra_client import RAClient
 from nav import goto_mode_select
 from menu_reader import MenuReader

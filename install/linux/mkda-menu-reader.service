@@ -9,9 +9,9 @@ ExecStart=/usr/bin/env python3 __INSTALL_DIR__/menu_reader.py
 Restart=always
 RestartSec=10
 # speech backend / voice — uncomment to override
-# Environment=MKDA_SPEAK_BACKEND=spd-say
-# Environment=MKDA_VOICE=en-us
-# Environment=MKDA_RATE_WPM=260
+# Environment=MK_SPEAK_BACKEND=spd-say
+# Environment=MK_VOICE=en-us
+# Environment=MK_RATE_WPM=260
 
 [Install]
 WantedBy=default.target

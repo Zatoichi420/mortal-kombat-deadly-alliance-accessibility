@@ -126,8 +126,8 @@ python menu_reader.py --once       # one snapshot, then exit
 python menu_reader.py --descriptions   # speak the long mode blurbs
 ```
 
-Environment variables: `MKDA_RA_HOST` (default `127.0.0.1`), `MKDA_RA_PORT`
-(`55355`), `MKDA_VOICE`, `MKDA_RATE_WPM`, `MKDA_SPEAK_BACKEND`
+Environment variables: `MK_RA_HOST` (default `127.0.0.1`), `MK_RA_PORT`
+(`55355`), `MK_VOICE`, `MK_RATE_WPM`, `MK_SPEAK_BACKEND`
 (`say`/`spd-say`/`espeak`/`powershell`/`log`/`auto`).
 
 Logs: `~/Library/Logs/mkda-menu-reader.log` (macOS) ·
@@ -142,6 +142,18 @@ Logs: `~/Library/Logs/mkda-menu-reader.log` (macOS) ·
   names — see [docs/CALIBRATION.md](docs/CALIBRATION.md).
 - **Not yet covered** (falls through to RetroArch's own OCR key): in-match text,
   the Krypt, the profile name-entry keyboard, Practice sub-screens.
+
+### Known issue — fixed
+
+Selecting a menu item did nothing / replayed the intro. Cause: RetroArch's
+network gamepad (`network_remote`) was left enabled from the address-finding work,
+and a stuck injected Player-1 button was overriding the real controller. The
+daemon **never** needs `network_remote` — the installers now turn it off and
+assert it stays off. If you enabled it by hand for calibration, set
+`network_remote_enable = "false"` (RetroArch closed) and restart RetroArch. The
+daemon also now ignores the title/attract screens (`game_state`) and waits for a
+stable screen before its first announcement. See
+[docs/BUG-menu-selection.md](docs/BUG-menu-selection.md).
 
 ## Retargeting / other regions
 

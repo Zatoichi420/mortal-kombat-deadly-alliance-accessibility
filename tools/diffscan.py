@@ -14,6 +14,10 @@ Scans .sdata+.sbss by default (0x8041a000..0x80421000) plus a slice of .bss.
 
 from __future__ import annotations
 
+
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 import sys
 import time
 

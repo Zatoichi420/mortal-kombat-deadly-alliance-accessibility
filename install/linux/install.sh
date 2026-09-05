@@ -27,13 +27,17 @@ fi
 
 # 2. RetroArch network command interface
 CFG="${XDG_CONFIG_HOME:-$HOME/.config}/retroarch/retroarch.cfg"
-if [ -f "$CFG" ] && grep -q '^network_cmd_enable = "false"' "$CFG"; then
-    echo "Quit RetroArch, then press Return to set network_cmd_enable = true ..."
-    read -r _
-    sed -i 's/^network_cmd_enable = "false"/network_cmd_enable = "true"/' "$CFG"
-    echo "  done"
-elif [ ! -f "$CFG" ]; then
-    echo "NOTE: set 'network_cmd_enable = true' in RetroArch (Settings > Network > Network Commands)."
+if [ -f "$CFG" ]; then
+    if grep -qE '^network_cmd_enable = "false"|^network_remote_enable(_user_p1)? = "true"' "$CFG"; then
+        echo "Quit RetroArch, then press Return to fix its network settings ..."
+        read -r _
+        sed -i 's/^network_cmd_enable = "false"/network_cmd_enable = "true"/' "$CFG"
+        sed -i 's/^network_remote_enable = "true"/network_remote_enable = "false"/' "$CFG"
+        sed -i 's/^network_remote_enable_user_p1 = "true"/network_remote_enable_user_p1 = "false"/' "$CFG"
+        echo "  network_cmd_enable = true ; network_remote_enable = false"
+    fi
+else
+    echo "NOTE: in RetroArch set Network Commands = ON and Network Remote = OFF."
 fi
 
 # 3. install files + unit

@@ -19,18 +19,24 @@ if [ "${1:-}" = "uninstall" ]; then
     exit 0
 fi
 
-# 1. enable RetroArch's network command interface
+# 1. RetroArch network config: the daemon needs the command interface (55355) ON
+#    and must NOT need the network gamepad (55400) — leaving that on is an input
+#    hazard (a stuck injected button breaks menu selection).
 CFG="$HOME/Library/Application Support/RetroArch/config/retroarch.cfg"
 if [ -f "$CFG" ]; then
-    if grep -q '^network_cmd_enable = "false"' "$CFG"; then
-        echo "Quit RetroArch, then press Return to enable its network command interface..."
+    need_cmd=$(grep -q '^network_cmd_enable = "false"' "$CFG" && echo 1 || echo 0)
+    has_remote=$(grep -qE '^network_remote_enable(_user_p1)? = "true"' "$CFG" && echo 1 || echo 0)
+    if [ "$need_cmd" = 1 ] || [ "$has_remote" = 1 ]; then
+        echo "Quit RetroArch, then press Return to fix its network settings..."
         read -r _
         sed -i '' 's/^network_cmd_enable = "false"/network_cmd_enable = "true"/' "$CFG"
-        echo "  set network_cmd_enable = true"
+        sed -i '' 's/^network_remote_enable = "true"/network_remote_enable = "false"/' "$CFG"
+        sed -i '' 's/^network_remote_enable_user_p1 = "true"/network_remote_enable_user_p1 = "false"/' "$CFG"
+        echo "  network_cmd_enable = true ; network_remote_enable = false"
     fi
 else
-    echo "WARNING: retroarch.cfg not found; make sure 'network_cmd_enable = true' is set"
-    echo "  (RetroArch: Settings > Network > Network Commands)."
+    echo "WARNING: retroarch.cfg not found. In RetroArch set Settings > Network >"
+    echo "  Network Commands = ON, and Network Remote = OFF."
 fi
 
 # 2. copy the daemon somewhere launchd is allowed to read (NOT ~/Desktop / iCloud)

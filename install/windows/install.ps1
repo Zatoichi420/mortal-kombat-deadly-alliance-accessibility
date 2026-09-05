@@ -30,10 +30,13 @@ if (-not $py) { throw "Python 3 not found on PATH. Install from https://python.o
 $cfg = Join-Path $env:APPDATA "RetroArch\retroarch.cfg"
 if (Test-Path $cfg) {
     $c = Get-Content $cfg -Raw
-    if ($c -match 'network_cmd_enable = "false"') {
-        Read-Host "Quit RetroArch, then press Enter to set network_cmd_enable = true"
-        ($c -replace 'network_cmd_enable = "false"', 'network_cmd_enable = "true"') | Set-Content $cfg -NoNewline
-        Write-Host "  set network_cmd_enable = true"
+    if ($c -match 'network_cmd_enable = "false"' -or $c -match 'network_remote_enable(_user_p1)? = "true"') {
+        Read-Host "Quit RetroArch, then press Enter to fix its network settings"
+        $c = $c -replace 'network_cmd_enable = "false"', 'network_cmd_enable = "true"'
+        $c = $c -replace 'network_remote_enable = "true"', 'network_remote_enable = "false"'
+        $c = $c -replace 'network_remote_enable_user_p1 = "true"', 'network_remote_enable_user_p1 = "false"'
+        $c | Set-Content $cfg -NoNewline
+        Write-Host "  network_cmd_enable = true ; network_remote_enable = false"
     }
 } else {
     Write-Host "NOTE: enable RetroArch > Settings > Network > Network Commands."

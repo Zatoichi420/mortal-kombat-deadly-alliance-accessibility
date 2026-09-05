@@ -11,6 +11,10 @@ Mechanism under test (from disassembly of run_common_menu_ctrl / p_pselect_choos
   CSS hovered char = read_u32(P1_CHAR 0x8041a8c0) / P2_CHAR 0x8041a8c4
 """
 from __future__ import annotations
+
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 import time
 from ra_client import RAClient
 from see import see

@@ -1,6 +1,6 @@
 """Cross-platform interruptible speech for the talking-menu daemon.
 
-Backends, chosen automatically by OS (override with env MKDA_SPEAK_BACKEND):
+Backends, chosen automatically by OS (override with env MK_SPEAK_BACKEND):
 
   macOS   : `say`                         (kill previous process to interrupt)
   Linux   : `spd-say` (speech-dispatcher) preferred, else `espeak`/`espeak-ng`
@@ -8,9 +8,9 @@ Backends, chosen automatically by OS (override with env MKDA_SPEAK_BACKEND):
   any     : `log`  -> just print "SPEAK: ..."  (used by tests)
 
 Env:
-  MKDA_SPEAK_BACKEND  say | spd-say | espeak | powershell | log | auto (default)
-  MKDA_VOICE          backend-specific voice name
-  MKDA_RATE_WPM       integer words-per-minute (mapped per backend)
+  MK_SPEAK_BACKEND  say | spd-say | espeak | powershell | log | auto (default)
+  MK_VOICE          backend-specific voice name
+  MK_RATE_WPM       integer words-per-minute (mapped per backend)
 """
 
 from __future__ import annotations
@@ -46,10 +46,10 @@ def _detect_backend() -> str:
 
 class Speaker:
     def __init__(self, voice: str | None = None, rate_wpm: int | None = None):
-        self.voice = voice or os.environ.get("MKDA_VOICE") or None
-        rw = os.environ.get("MKDA_RATE_WPM")
+        self.voice = voice or os.environ.get("MK_VOICE") or None
+        rw = os.environ.get("MK_RATE_WPM")
         self.rate_wpm = rate_wpm or (int(rw) if rw else None)
-        self.backend = os.environ.get("MKDA_SPEAK_BACKEND", "auto")
+        self.backend = os.environ.get("MK_SPEAK_BACKEND", "auto")
         if self.backend == "auto":
             self.backend = _detect_backend()
         self._proc: subprocess.Popen | None = None

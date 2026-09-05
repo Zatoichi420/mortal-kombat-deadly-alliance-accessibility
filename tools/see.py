@@ -10,6 +10,10 @@ docs/research/retroarch-memory-interface.md) with a patch to write last_ocr.txt.
 
 from __future__ import annotations
 
+
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 import os
 import time
 

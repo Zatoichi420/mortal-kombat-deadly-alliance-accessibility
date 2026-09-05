@@ -10,8 +10,8 @@ through whatever TTS the OS has (see speak.py). Nothing here writes to the game.
     python menu_reader.py --once      # one snapshot, exit
     python menu_reader.py --descriptions   # speak the long mode blurbs
 
-Env: MKDA_RA_HOST (default 127.0.0.1), MKDA_RA_PORT (default 55355),
-     MKDA_VOICE, MKDA_RATE_WPM, MKDA_SPEAK_BACKEND  (see speak.py).
+Env: MK_RA_HOST (default 127.0.0.1), MK_RA_PORT (default 55355),
+     MK_VOICE, MK_RATE_WPM, MK_SPEAK_BACKEND  (see speak.py).
 
 Requires in retroarch.cfg (same on every OS):  network_cmd_enable = "true"
 """
@@ -59,6 +59,8 @@ class MenuReader:
         self._pending_key = None
         self._pending_since = 0.0
         self._last_context = None
+        self._ctx_candidate = None
+        self._ctx_streak = 0
         self._roster_cache: dict[int, str] = {}
 
     # ---- reading helpers --------------------------------------------------
@@ -138,10 +140,15 @@ class MenuReader:
 
     # ---- classify + narrate -------------------------------------------
 
+    # game_state values seen on the title / attract screens, where there is no
+    # interactive menu (verified live: gs=1 title & attract idle, gs=20 title).
+    # The real main menu + submenus are gs=11; a real in-match pause menu is gs=5.
+    _NON_MENU_STATES = (1, 20)
+
     def _classify(self, s: dict) -> str:
         if s["f_psel_init"] or s["p1_state"] or s["p2_state"]:
             return Context.CHARSELECT
-        if s["menu"] is not None:
+        if s["menu"] is not None and s["game_state"] not in self._NON_MENU_STATES:
             return Context.MENU
         return Context.IDLE
 
@@ -189,8 +196,21 @@ class MenuReader:
         return tuple(key_bits), " . ".join(parts), "Character select"
 
     def narrate(self, s: dict):
-        ctx = self._classify(s)
+        raw_ctx = self._classify(s)
         now = time.monotonic()
+
+        # debounce the context itself: a new non-idle context must hold for two
+        # polls before we act on it, so a single transient frame (a screen
+        # transition, a stale read) can't trigger a spurious announcement.
+        if raw_ctx == self._ctx_candidate:
+            self._ctx_streak += 1
+        else:
+            self._ctx_candidate = raw_ctx
+            self._ctx_streak = 1
+        if raw_ctx == Context.IDLE or self._ctx_streak >= 2:
+            ctx = raw_ctx
+        else:
+            return
 
         if ctx != self._last_context:
             self._last_context = ctx
@@ -295,8 +315,8 @@ def main():
     ap.add_argument("--once", action="store_true", help="one snapshot then exit")
     ap.add_argument("--descriptions", action="store_true",
                     help="speak the long mode descriptions instead of just the name")
-    ap.add_argument("--host", default=os.environ.get("MKDA_RA_HOST", "127.0.0.1"))
-    ap.add_argument("--port", type=int, default=int(os.environ.get("MKDA_RA_PORT", "55355")))
+    ap.add_argument("--host", default=os.environ.get("MK_RA_HOST", "127.0.0.1"))
+    ap.add_argument("--port", type=int, default=int(os.environ.get("MK_RA_PORT", "55355")))
     args = ap.parse_args()
 
     ra = RAClient(cmd_host=args.host, cmd_port=args.port)
