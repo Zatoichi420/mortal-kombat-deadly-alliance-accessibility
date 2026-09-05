@@ -25,52 +25,97 @@ the "start on login" glue differ per OS. See [docs/HOW-IT-WORKS.md](docs/HOW-IT-
   - Windows — built in (SAPI via PowerShell).
   - Linux — `speech-dispatcher` + `espeak-ng` (`sudo apt install speech-dispatcher espeak-ng`, or your distro's equivalent).
 
-## Setup
+## Setup — step by step
 
-### 1. Turn on RetroArch's network commands (once)
+This assumes you **already have** RetroArch installed, the Dolphin core added, and
+your MK: Deadly Alliance **USA** disc image, and that the game already boots and
+plays in RetroArch. If not, do that first (RetroArch's Online Updater installs
+the "Nintendo - GameCube / Wii (Dolphin)" core; load the disc image as content).
 
-RetroArch → **Settings → Network → Network Commands → ON**, or set in
-`retroarch.cfg`:
+### 1. Turn on RetroArch's network command interface
 
-```
-network_cmd_enable = "true"
-```
+The daemon talks to RetroArch over a local UDP port; it's off by default.
 
-(The installers below will offer to do this for you.)
+- In RetroArch: **Settings → Network → Network Commands → ON**
+  (in the RGUI menu; the setting right below is the port, leave it at `55355`).
+- Or edit `retroarch.cfg` while RetroArch is **closed** and set:
+  ```
+  network_cmd_enable = "true"
+  ```
+  `retroarch.cfg` lives at:
+  `~/Library/Application Support/RetroArch/config/retroarch.cfg` (macOS) ·
+  `~/.config/retroarch/retroarch.cfg` (Linux) ·
+  `%APPDATA%\RetroArch\retroarch.cfg` (Windows).
 
-### 2. Install the daemon
+The install script in step 3 will offer to flip this for you.
 
-Clone the repo, then:
+### 2. Check you have Python and a voice
 
-**macOS**
+- **Python 3.8+** on your PATH. Test in a terminal: `python --version` (or `python3 --version`).
+  Windows: install from <https://python.org> and tick "Add to PATH".
+- **Text-to-speech:**
+  - macOS — nothing to do (`say` is built in).
+  - Windows — nothing to do (uses the built-in SAPI voice via PowerShell).
+  - Linux — install one: `sudo apt install speech-dispatcher espeak-ng`
+    (or `dnf`/`pacman` equivalent). Test: `spd-say hello`.
+
+### 3. Get the code and install the daemon
+
 ```bash
-install/macos/install.sh
+git clone https://github.com/Zatoichi420/mortal-kombat-deadly-alliance-accessibility
+cd mortal-kombat-deadly-alliance-accessibility
 ```
-Installs a launchd agent. Also copies the daemon out of `~/Desktop`/iCloud (which
-sandboxed background processes can't read) into `~/Library/Application Support/`.
 
-**Linux**
+Then run the installer for your OS. It copies the daemon to a stable location,
+registers it to start automatically and stay running, and (if needed) offers to
+set `network_cmd_enable`.
+
+| OS | command |
+|---|---|
+| **macOS** | `install/macos/install.sh` |
+| **Linux** | `install/linux/install.sh` |
+| **Windows** | `powershell -ExecutionPolicy Bypass -File install\windows\install.ps1` |
+
+Each installer takes an `uninstall` argument to undo everything.
+
+> **Not ready to auto-install?** You can skip step 3 entirely and just run
+> `python menu_reader.py` in a terminal whenever you play. The installer only
+> automates "start it in the background at login".
+
+### 4. Play
+
+1. Start MK: Deadly Alliance in RetroArch (load the disc image as content, or use
+   a playlist entry — however you normally launch it).
+2. The daemon notices the game within a second or two. Nothing is spoken during
+   the intro logos.
+3. Press **Start** to get past the logos to the main menu. As you move up/down
+   you'll hear **"Arcade, 1 of 8"**, **"Versus, 2 of 8"**, and so on. The Options
+   and Kontent sub-menus and the pause menu work the same way.
+4. In Arcade → character select, moving across the roster speaks the fighter names.
+   (Please sanity-check this once — see [docs/CALIBRATION.md](docs/CALIBRATION.md) §1.)
+
+### 5. Check it's working / troubleshoot
+
 ```bash
-install/linux/install.sh
+python menu_reader.py --once     # from the repo folder — should print a state line
 ```
-Installs a `systemd --user` service.
+- **"cannot reach RetroArch"** → the game isn't running, or step 1 (network
+  commands) isn't done, or you edited `retroarch.cfg` while RetroArch was open
+  (it rewrites the file on exit and undoes your change — close it first).
+- **Silent on the menus** → check the daemon is running and see the log:
+  - macOS: `tail -f ~/Library/Logs/mkda-menu-reader.log`
+  - Linux: `journalctl --user -u mkda-menu-reader -f`
+  - Windows: `Get-Content "$env:LOCALAPPDATA\mkda-talking-menu\menu_reader.log" -Wait`
+- **macOS: RetroArch goes unresponsive when it's not the front window** → it's
+  being "App Napped". Keep RetroArch focused while playing; the daemon retries and
+  recovers on its own when you switch back.
 
-**Windows** (PowerShell)
-```powershell
-powershell -ExecutionPolicy Bypass -File install\windows\install.ps1
-```
-Registers a hidden auto-start Scheduled Task.
+### Optional: a one-click launcher
 
-Each installer has an `uninstall` argument.
-
-### 3. Play
-
-Start MK: Deadly Alliance in RetroArch however you normally do. The daemon waits
-quietly until it sees the game running, then narrates. Press Start past the logos
-to reach the main menu and you should hear the items as you move.
-
-Optional double-click launchers that start RetroArch with the game are in
-[`launchers/`](launchers/) — edit the paths at the top of the one for your OS.
+[`launchers/`](launchers/) has a start-the-game-with-one-action script per OS.
+Open the one for your OS, edit the two paths at the top (RetroArch, your disc
+image), and — on macOS — build it into an app:
+`osacompile -o "$HOME/Desktop/Play Mortal Kombat.app" launchers/macos-launcher.applescript`.
 
 ## Running it by hand / debugging
 
@@ -104,6 +149,13 @@ Everything you need is in [docs/CALIBRATION.md](docs/CALIBRATION.md) and
 [docs/research/](docs/research/). The game ships an **unstripped** copy of its own
 executable (`mk5gc_release.elf`), so retargeting is reading a symbol table, not
 guessing — `tools/` has the extractor and disassembler.
+
+## Contributing
+
+Yes please — especially Windows/Linux testing, the character-select
+confirmation, and addresses for other regions. See
+[CONTRIBUTING.md](CONTRIBUTING.md) and [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md).
+Be kind: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Legal
 

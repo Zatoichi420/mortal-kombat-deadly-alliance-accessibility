@@ -2,15 +2,21 @@
 """Disassemble a function in mk5gc_release.elf and resolve r13/r2 (small-data)
 memory accesses to their global-variable addresses + symbol names.
 
-    python3 dis.py mode_menu_ctrl
-    python3 dis.py 0x80065cec 548
+    export MKDA_ELF=/path/to/mk5gc_release.elf      # extract with tools/gc_extract.py
+    python3 ppcdis.py mode_menu_ctrl
+    python3 ppcdis.py 0x80065cec 548
+
+Needs: pip install pyelftools capstone
 """
 from __future__ import annotations
-import re, sys, struct
+import os, re, sys, struct
 from elftools.elf.elffile import ELFFile
 from capstone import Cs, CS_ARCH_PPC, CS_MODE_32, CS_MODE_BIG_ENDIAN
 
-ELF = "/Users/orlandojohnson/mkda-work/disc/mk5gc_release.elf"
+ELF = os.environ.get("MKDA_ELF", "mk5gc_release.elf")
+if not os.path.isfile(ELF):
+    sys.exit(f"ELF not found: {ELF}\n"
+             "Set MKDA_ELF, or extract it: python3 gc_extract.py <disc> extract mk5gc_release.elf .")
 e = ELFFile(open(ELF, "rb"))
 segs = [(s['sh_addr'], s['sh_addr'] + s['sh_size'], s.name, s.data())
         for s in e.iter_sections() if s['sh_addr'] and s['sh_type'] == 'SHT_PROGBITS']

@@ -4,8 +4,8 @@
 --   osacompile -o "$HOME/Desktop/Play Mortal Kombat.app" launchers/macos-launcher.applescript
 -- Then activate it with VoiceOver (VO-Space). First run: macOS asks permission — choose Open.
 
--- ---- EDIT THIS PATH -------------------------------------------------------
-set romPath to "/Volumes/GameLibrary/OpenEmu/Game Library/roms/GameCube/Mortal Kombat - Deadly Alliance (USA) (Rev 1).nkit.iso"
+-- ---- EDIT THIS PATH (your MK:DA USA disc image) ---------------------------
+set romPath to (POSIX path of (path to home folder)) & "Games/GameCube/Mortal Kombat - Deadly Alliance (USA).rvz"
 -- ----------------------------------------------------------------------
 
 set corePath to (POSIX path of (path to home folder)) & "Library/Application Support/RetroArch/cores/dolphin_libretro.dylib"
