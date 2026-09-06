@@ -57,15 +57,27 @@ class RAClient:
 
     # ---- network command interface -------------------------------------------
 
-    def _cmd(self, text: str, expect_reply: bool, retries: int = 1) -> str | None:
+    def _cmd(self, text: str, expect_reply: bool, retries: int = 1,
+             match_tokens: tuple = ()) -> str | None:
         """Send a command; if a reply is expected, read datagrams until one whose
         leading token matches the command we sent (RetroArch echoes the command
         name in READ_CORE_MEMORY / WRITE_CORE_MEMORY / GET_STATUS / VERSION
         replies). This demuxes replies on the shared UDP socket so a slow
-        GET_STATUS answer can't be mistaken for a READ_CORE_MEMORY answer."""
+        GET_STATUS answer can't be mistaken for a READ_CORE_MEMORY answer.
+
+        `match_tokens` additionally pins reply tokens by position — e.g.
+        (("1", "<addr>"),) requires the echoed address (token 1) to match, so a
+        stale READ_CORE_MEMORY reply for a *different* address is also dropped."""
         want = text.split(" ", 1)[0]
         last_err = None
         for _ in range(retries + 1):
+            # drain any datagrams left over from a previous, timed-out command
+            self._cmd_sock.settimeout(0)
+            try:
+                while True:
+                    self._cmd_sock.recvfrom(65535)
+            except (BlockingIOError, socket.timeout, OSError):
+                pass
             self._cmd_sock.sendto(text.encode("ascii"), self.cmd_addr)
             if not expect_reply:
                 return None
@@ -77,10 +89,15 @@ class RAClient:
                 except socket.timeout:
                     break
                 reply = data.decode("ascii", errors="replace").strip()
-                if reply.split(" ", 1)[0] == want or want == "VERSION":
-                    return reply
-                # stale reply to an earlier command — drop it and keep reading
-                last_err = f"stale reply {reply.split(' ',1)[0]!r}"
+                toks = reply.split()
+                if not (toks and (toks[0] == want or want == "VERSION")):
+                    last_err = f"stale reply {(toks[0] if toks else '')!r}"
+                    continue
+                if any(len(toks) <= i or toks[i].lower() != v.lower()
+                       for i, v in match_tokens):
+                    last_err = f"reply token mismatch {reply[:40]!r}"
+                    continue
+                return reply
         raise RetroArchError(
             f"no reply to {text!r} ({last_err or 'timeout'}; is RetroArch running and focused?)")
 
@@ -114,7 +131,8 @@ class RAClient:
     def read_memory(self, addr: int, length: int) -> bytes:
         """READ_CORE_MEMORY. addr = raw GameCube address; RetroArch parses the
         address as hex and the byte count as DECIMAL (`sscanf "%x %u"`)."""
-        reply = self._cmd(f"READ_CORE_MEMORY {addr:x} {length:d}", True)
+        reply = self._cmd(f"READ_CORE_MEMORY {addr:x} {length:d}", True,
+                          match_tokens=((1, f"{addr:x}"),))
         toks = reply.split()
         # "READ_CORE_MEMORY <addr> <b0> <b1> ..."  or  "... <addr> -1 <error>"
         if len(toks) >= 3 and toks[2] == "-1":
