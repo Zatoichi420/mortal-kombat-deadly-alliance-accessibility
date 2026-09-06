@@ -74,3 +74,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: out/*
+          generate_release_notes: true
+          body: |
+            Screen-reader talking menus for **Mortal Kombat: Deadly Alliance** (GameCube)
+            running in RetroArch's Dolphin core.
+
+            **Download the one file for your system and run it** — no Python, no
+            install. Run it once with `--install` to have it start automatically at
+            login (`--uninstall` undoes that). Full setup is in the
+            [README](https://github.com/Zatoichi420/mortal-kombat-deadly-alliance-accessibility#setup--step-by-step).
+
+            `.sha256` files are the checksums. Reads game memory only; never writes.
