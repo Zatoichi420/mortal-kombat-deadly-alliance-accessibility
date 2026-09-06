@@ -58,7 +58,11 @@ jobs:
           else
             cp dist/mkda-reader "out/${{ matrix.asset }}"
           fi
-          ( cd out && shasum -a 256 "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256" )
+          # shasum isn't on the Windows runner's bash and sha256sum isn't on
+          # macOS - use Python (already set up) for a portable checksum.
+          cd out
+          python -c "import hashlib,sys; f=sys.argv[1]; print(hashlib.sha256(open(f,'rb').read()).hexdigest()+'  '+f)" \
+            "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
