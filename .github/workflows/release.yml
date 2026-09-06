@@ -1,0 +1,72 @@
+name: Build release binaries
+
+# Cuts the single-file `mkda-reader` for each OS. On a version tag the
+# binaries are attached to the GitHub Release; otherwise they're just uploaded
+# as workflow artifacts you can download from the run page.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: mkda-reader-linux-x86_64
+          - os: macos-latest
+            asset: mkda-reader-macos-arm64
+          - os: windows-latest
+            asset: mkda-reader-windows-x86_64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build
+        run: python packaging/build.py
+
+      - name: Smoke test (--help must exit 0)
+        run: |
+          python - <<'PY'
+          import subprocess, sys, glob, os
+          exe = glob.glob("dist/mkda-reader*")[0]
+          os.chmod(exe, 0o755)
+          r = subprocess.run([exe, "--help"], capture_output=True, text=True, timeout=60)
+          print(r.stdout)
+          sys.exit(r.returncode)
+          PY
+        shell: bash
+
+      - name: Stage asset
+        shell: bash
+        run: |
+          mkdir -p out
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp dist/mkda-reader.exe "out/${{ matrix.asset }}"
+          else
+            cp dist/mkda-reader "out/${{ matrix.asset }}"
+          fi
+          ( cd out && shasum -a 256 "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256" )
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: out/*
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*

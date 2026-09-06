@@ -19,11 +19,12 @@ the "start on login" glue differ per OS. See [docs/HOW-IT-WORKS.md](docs/HOW-IT-
 - *Mortal Kombat: Deadly Alliance*, **USA release** (disc id `GMKE5D`) — your own
   legally-obtained copy. Any dump format (ISO / RVZ / NKit) is fine.
   Other regions work after a short retarget — see [docs/CALIBRATION.md](docs/CALIBRATION.md).
-- **Python 3.8+**.
 - A TTS backend:
   - macOS — built in (`say`).
   - Windows — built in (SAPI via PowerShell).
   - Linux — `speech-dispatcher` + `espeak-ng` (`sudo apt install speech-dispatcher espeak-ng`, or your distro's equivalent).
+- Python is **not** needed for the downloaded binary below — only to run from
+  source (Python 3.8+).
 
 ## Setup — step by step
 
@@ -47,40 +48,53 @@ The daemon talks to RetroArch over a local UDP port; it's off by default.
   `~/.config/retroarch/retroarch.cfg` (Linux) ·
   `%APPDATA%\RetroArch\retroarch.cfg` (Windows).
 
-The install script in step 3 will offer to flip this for you.
+The install step below will offer to flip this for you.
 
-### 2. Check you have Python and a voice
+### 2. Check you have a voice
 
-- **Python 3.8+** on your PATH. Test in a terminal: `python --version` (or `python3 --version`).
-  Windows: install from <https://python.org> and tick "Add to PATH".
-- **Text-to-speech:**
-  - macOS — nothing to do (`say` is built in).
-  - Windows — nothing to do (uses the built-in SAPI voice via PowerShell).
-  - Linux — install one: `sudo apt install speech-dispatcher espeak-ng`
-    (or `dnf`/`pacman` equivalent). Test: `spd-say hello`.
+- macOS — nothing to do (`say` is built in).
+- Windows — nothing to do (uses the built-in SAPI voice via PowerShell).
+- Linux — install one: `sudo apt install speech-dispatcher espeak-ng`
+  (or `dnf`/`pacman` equivalent). Test: `spd-say hello`.
 
-### 3. Get the code and install the daemon
+### 3. Download the reader for your system
+
+One file, nothing to install, from the
+[**Releases**](https://github.com/Zatoichi420/mortal-kombat-deadly-alliance-accessibility/releases)
+page:
+
+| System | File |
+|---|---|
+| Windows | `mkda-reader-windows-x86_64.exe` |
+| macOS (Apple Silicon) | `mkda-reader-macos-arm64` |
+| Linux | `mkda-reader-linux-x86_64` |
+
+Then either:
+
+- **Run it when you play** — double-click it, or `./mkda-reader` in a terminal.
+  Leave it running while you play.
+- **Or have it start on its own** — run it once with `--install`:
+  ```
+  ./mkda-reader --install
+  ```
+  It registers a hidden per-user background service (launchd / systemd / Task
+  Scheduler) that starts at login. `--uninstall` removes it; `--status` reports it.
+  On macOS, if Gatekeeper blocks the first run: right-click → Open, or
+  `xattr -d com.apple.quarantine ./mkda-reader`.
+
+<details>
+<summary>Run from source instead (for contributors)</summary>
 
 ```bash
 git clone https://github.com/Zatoichi420/mortal-kombat-deadly-alliance-accessibility
 cd mortal-kombat-deadly-alliance-accessibility
+python menu_reader.py            # run it now
+python menu_reader.py --install  # or register the background service
 ```
 
-Then run the installer for your OS. It copies the daemon to a stable location,
-registers it to start automatically and stay running, and (if needed) offers to
-set `network_cmd_enable`.
-
-| OS | command |
-|---|---|
-| **macOS** | `install/macos/install.sh` |
-| **Linux** | `install/linux/install.sh` |
-| **Windows** | `powershell -ExecutionPolicy Bypass -File install\windows\install.ps1` |
-
-Each installer takes an `uninstall` argument to undo everything.
-
-> **Not ready to auto-install?** You can skip step 3 entirely and just run
-> `python menu_reader.py` in a terminal whenever you play. The installer only
-> automates "start it in the background at login".
+The `install/{macos,linux,windows}/` scripts do the same and also fix
+RetroArch's network settings for you.
+</details>
 
 ### 4. Play
 

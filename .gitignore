@@ -21,3 +21,8 @@ __pycache__/
 last_ocr.txt
 last_frame.png
 *.log
+
+# PyInstaller output
+/build/
+/dist/
+*.spec
