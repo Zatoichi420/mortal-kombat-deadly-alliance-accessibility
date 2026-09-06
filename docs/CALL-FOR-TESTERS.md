@@ -60,12 +60,11 @@ to retarget it (it's reading a symbol table the disc ships, not guessing).
 | **A computer** | Windows 10/11, macOS, or a Linux desktop. |
 | **RetroArch** | Latest stable. Install the **"Nintendo - GameCube / Wii (Dolphin)"** core via RetroArch's Online Updater. |
 | **The game** | Your own legally-obtained disc image of the **USA** release. Deadly Alliance disc ID `GMKE5D`; Deception disc ID `GQNE5D`. Any dump format (ISO / RVZ / NKit). The game must already boot and play in RetroArch before you start. |
-| **Python** | Version 3.8 or newer, on your PATH. Windows: install from python.org and tick "Add Python to PATH". |
 | **Text-to-speech** | **Windows:** nothing to install (uses the built-in SAPI voice). **macOS:** nothing to install (`say`). **Linux:** `sudo apt install speech-dispatcher espeak-ng` or your distro's equivalent. |
 | **A screen reader** | Whatever you already use — NVDA, JAWS, Orca, VoiceOver. The tool speaks *alongside* your screen reader; it does not replace it. |
 
-You do **not** need a compiler, a GitHub account (unless you want to file a
-report), or any paid software.
+You do **not** need Python, a compiler, a GitHub account (unless you want to
+file a report), or any paid software.
 
 ## Setup, in short
 
@@ -73,35 +72,35 @@ Full step-by-step is in each repo's **README**. The short version:
 
 1. In RetroArch: **Settings → Network → Network Commands → ON** (leave the port at
    55355).
-2. Download the project: the green **Code** button → **Download ZIP**, and unzip
-   it. (Or `git clone` if you use git.)
-3. Run the installer for your OS from inside that folder:
-   - **Windows:** `powershell -ExecutionPolicy Bypass -File install\windows\install.ps1`
-   - **Linux:** `install/linux/install.sh`
-   - **macOS:** `install/macos/install.sh`
-
-   The installer copies the tool to a stable location and registers it to start in
-   the background at login.
-4. **Or skip the installer entirely** and just run `python deception_reader.py`
-   (or `python menu_reader.py` for Deadly Alliance) in a terminal whenever you
-   play.
-5. Start the game in RetroArch. Within a second or two it should start speaking as
+2. From the repo's **Releases** page, download the one file for your system:
+   - **Windows:** `…-windows-x86_64.exe`
+   - **macOS (Apple Silicon):** `…-macos-arm64`
+   - **Linux:** `…-linux-x86_64`
+3. Run it — double-click, or `./<file>` in a terminal. Leave it running while you
+   play. To have it start on its own at login, run it once with `--install`
+   (`--uninstall` undoes that).
+   - macOS may block the first run: right-click → Open, or
+     `xattr -d com.apple.quarantine ./<file>`.
+4. Start the game in RetroArch. Within a second or two it should start speaking as
    you move through the menus.
+
+(Prefer to run from source? Clone the repo and use `python deception_reader.py` /
+`python menu_reader.py` — the README has the details.)
 
 **Optional confirm-button fix:** RetroArch's Dolphin core maps the GameCube
 "confirm" button to the *right* face button (B / Circle), not the bottom one, so
-pressing the button you'd expect can act as "Back". Each repo has an optional
-controller remap in `extras/` that swaps it; the installer offers to apply it.
+the button you'd expect can act as "Back". The Deadly Alliance repo ships a
+controller remap in `extras/` that swaps it; running `install/…/install.sh` from
+a source checkout offers to apply it.
 
 ## How to report back
 
 - **GitHub Issues** on the relevant repo is best — there are templates. Please
   attach:
-  - Your OS and version, your screen reader, your Python version.
+  - Your OS and version, and your screen reader.
   - The **log file** (the README says where it is for each OS).
-  - The output of `python deception_reader.py --probe` (or `menu_reader.py
-    --probe`) taken on the screen where something went wrong — this prints the
-    live state without speaking.
+  - The output of `<the downloaded file> --probe` taken on the screen where
+    something went wrong — this prints the live state without speaking.
 - **GitHub Discussions** for "it works!" reports, questions, or general feedback.
 - Or reply in the forum thread and I'll help you get a report together.
 

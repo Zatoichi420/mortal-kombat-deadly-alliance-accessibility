@@ -111,7 +111,8 @@ RetroArch's network settings for you.
 ### 5. Check it's working / troubleshoot
 
 ```bash
-python menu_reader.py --once     # from the repo folder — should print a state line
+./mkda-reader --once             # the downloaded binary — should print a state line
+python menu_reader.py --once     # or from a repo checkout
 ```
 - **"cannot reach RetroArch"** → the game isn't running, or step 1 (network
   commands) isn't done, or you edited `retroarch.cfg` while RetroArch was open
